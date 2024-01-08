@@ -45,6 +45,7 @@ struct Args {
 pub enum Pipelines {
     Candlesticks,
     Coins,
+    EnumeratedVolume,
     Leaderboards,
     Market24hData,
     OrderHistory,
@@ -188,6 +189,7 @@ async fn main() -> Result<()> {
             let mut x = vec![
                 Pipelines::Candlesticks,
                 Pipelines::Coins,
+                Pipelines::EnumeratedVolume,
                 Pipelines::Market24hData,
                 Pipelines::UserHistory,
             ];
@@ -259,6 +261,13 @@ async fn main() -> Result<()> {
                     pool.clone(),
                     network.to_base_url(),
                 ))));
+            }
+            Pipelines::EnumeratedVolume => {
+                data.push(Arc::new(Mutex::new(RefreshMaterializedView::new(
+                    pool.clone(),
+                    "aggregator.enumerated_volume",
+                    Duration::from_secs(60)
+                ))))
             }
             Pipelines::Leaderboards => {
                 data.push(Arc::new(Mutex::new(Leaderboards::new(pool.clone()))));
