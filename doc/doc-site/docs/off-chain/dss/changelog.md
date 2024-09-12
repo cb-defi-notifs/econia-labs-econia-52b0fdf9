@@ -5,12 +5,147 @@ Stable DSS builds are tracked on the [`dss-stable`] branch with tags like [`dss-
 ## Release procedure
 
 1. Create preparatory pull request (PR) into `main` branch of `econia` repo (like [#653]).
-   1. Rebuild REST API docs.
-   1. Bump changelog with PRs since last preparatory PR:
-      1. In `econia` repo.
-      1. In processor submodule.
+   1. [Rebuild REST API docs][docs site readme].
+   1. Bump changelog.
+      1. Add new pull requests since last release:
+         1. From [`econia` repo].
+         1. From [processor submodule].
+      1. Note if a hot upgrade is possible relative to the last release.
+      1. Verify all new links by manually following them on a
+         [live local docs build][docs site readme].
+      1. Run `mdformat` on changelog.
+1. Tag `main` with an annotated release candidate tag like [dss-v2.1.0-rc.1].
 1. Merge `main` into `dss-stable`.
 1. Push annotated tag to head of `dss-stable`.
+
+## [v2.4.0] (hot upgradable)
+
+### Added
+
+- Transaction version field inside levels MQTT events ([#792]).
+- Timestamp of last processed transaction in `/data_status` endpoint ([#796]).
+
+### Fixed
+
+- Updated the `time` crate to fix DSS docker compilation ([#793]).
+
+## [v2.3.0] (hot upgradable)
+
+### Fixed
+
+- Fix inaccurate data in `/rpc/volume_history` endpoint ([#778]).
+- Improve performance of daily rolling volume history indexing ([#780]).
+- Fix coins pipeline not working for coins which have an address starting with `0x0` ([#788]).
+
+### Internal
+
+- Update processor submodule to include upstream updates ([#783], [#786], [Processor #31]).
+
+## [v2.2.0] (hot upgradable)
+
+### Changed
+
+- Improve performance of `/markets` endpoint ([#760], [#772]).
+
+### Fixed
+
+- `/tickers` endpoint `base_volume_nominal` field ([#761]).
+- `/tickers` endpoint `price` field ([#766]).
+- fixed nominal issues when tickers isn't 1 ([#767]).
+- fixed potential duplicates in `daily_rolling_volume_history`([#765]).
+
+### Internal
+
+- Added dynamic batch sizing to avoid crashes during high usage ([#762]).
+- Updated Rust dependencies ([#764]).
+- Optimize daily volume calculations wrapped query ([#768]).
+- Fork base, to include upstream processor changes ([#775], [Processor #27]).
+
+## [v2.1.0] (hot upgradable)
+
+### Added
+
+- Price level events over MQTT (disabled by default, enable by adding `MQTT_PRICE_LEVELS=yes`, see `src/docker/example.env`) ([#753]).
+- `/tickers` endpoint optimizations ([#729]).
+- Suspend and resume functionality for the DSS when deployed on GCP ([#736]).
+- More details in aggregator logging ([#738]).
+- Default support for the `all` liquidity group on all markets ([#728]).
+
+### Changed
+
+- Fork base, to include upstream processor changes ([#725], [#744], [Processor #24]).
+
+### Fixed
+
+- `/tickers` endpoint `base_volume_nominal` and `quote_volume_nominal` fields ([#746], [#749]).
+- Balance reporting for market account handles starting with `0x0` ([#732], [Processor #25]).
+- Liquidity calculation logic ([#730]).
+
+### Deprecated
+
+- Market registration pipeline, an unused development stub that counted markets registered per day ([#727]).
+
+## [v2.0.1] (hot upgradable)
+
+### Fixed
+
+- MQTT order ID rounding ([#719]).
+
+### Added
+
+- MQTT rebuild in hot upgrade script ([#720]).
+- `fees` function ([#717]).
+- MQTT over WebSockets support ([#723]).
+
+## [v2.0.0]
+
+### Added
+
+- `/fees` endpoint and `get_market_cumulative_fees` function ([#693]).
+- `/prices` endpoint ([#697]).
+- `/spreads` endpoint ([#700]).
+- `base_volume_nominal` and `quote_volume_nominal` fields in `/tickers` endpoint ([#705]).
+- MQTT support ([#702]).
+- `/fees_24h` endpoint ([#708]).
+- Assorted Grafana configurations ([#709], [#711]).
+
+### Fixed
+
+- Empty transaction panics introduced by upstream gRPC changes ([processor #23], [#710]).
+- Quote escaping in Terraform scripts ([#704], [#706]).
+
+### Changed
+
+- Restructure Docker compose configuration files ([#699], [#701], [#702]).
+- Refactor liquidity calculations with groups, less granularity, for performance ([#703], [#707]).
+
+### Deprecated
+
+- WebSockets support ([#702]).
+- Unused indices from PostgreSQL database ([#712]).
+
+## [v1.6.1]
+
+### Fixed
+
+- Processing of events that are not a struct type ([#694], [processor #22]).
+
+## [v1.6.0]
+
+### Added
+
+- Assorted CoinGecko endpoints ([#675]).
+- Assorted TVL endpoints ([#670], [#674]).
+- Price conversion endpoint ([#672]).
+- Assorted volume endpoints ([#669], [#682]).
+- Grafana annotation support ([#667]).
+
+### Changed
+
+- Optimize `/user_balances` queries ([#685], [#688]).
+- Allow `/coins` endpoint to be queried from assorted PostgreSQL roles ([#687], [#688]).
+- Reduce aggregator memory consumption via batched operations ([#688], [#689]).
+- Make rolling volume a default pipeline ([#683], [#684]).
 
 ## [v1.5.0]
 
@@ -93,10 +228,97 @@ Stable DSS builds are tracked on the [`dss-stable`] branch with tags like [`dss-
 [#663]: https://github.com/econia-labs/econia/pull/663
 [#664]: https://github.com/econia-labs/econia/pull/664
 [#665]: https://github.com/econia-labs/econia/pull/665
+[#667]: https://github.com/econia-labs/econia/pull/667
+[#669]: https://github.com/econia-labs/econia/pull/669
+[#670]: https://github.com/econia-labs/econia/pull/670
+[#672]: https://github.com/econia-labs/econia/pull/672
+[#674]: https://github.com/econia-labs/econia/pull/674
+[#675]: https://github.com/econia-labs/econia/pull/675
+[#682]: https://github.com/econia-labs/econia/pull/682
+[#683]: https://github.com/econia-labs/econia/pull/683
+[#684]: https://github.com/econia-labs/econia/pull/684
+[#685]: https://github.com/econia-labs/econia/pull/685
+[#687]: https://github.com/econia-labs/econia/pull/687
+[#688]: https://github.com/econia-labs/econia/pull/688
+[#689]: https://github.com/econia-labs/econia/pull/689
+[#693]: https://github.com/econia-labs/econia/pull/693
+[#694]: https://github.com/econia-labs/econia/pull/694
+[#697]: https://github.com/econia-labs/econia/pull/697
+[#699]: https://github.com/econia-labs/econia/pull/699
+[#700]: https://github.com/econia-labs/econia/pull/700
+[#701]: https://github.com/econia-labs/econia/pull/701
+[#702]: https://github.com/econia-labs/econia/pull/702
+[#703]: https://github.com/econia-labs/econia/pull/703
+[#704]: https://github.com/econia-labs/econia/pull/704
+[#705]: https://github.com/econia-labs/econia/pull/705
+[#706]: https://github.com/econia-labs/econia/pull/706
+[#707]: https://github.com/econia-labs/econia/pull/707
+[#708]: https://github.com/econia-labs/econia/pull/708
+[#709]: https://github.com/econia-labs/econia/pull/709
+[#710]: https://github.com/econia-labs/econia/pull/710
+[#711]: https://github.com/econia-labs/econia/pull/711
+[#712]: https://github.com/econia-labs/econia/pull/712
+[#717]: https://github.com/econia-labs/econia/pull/717
+[#719]: https://github.com/econia-labs/econia/pull/719
+[#720]: https://github.com/econia-labs/econia/pull/720
+[#723]: https://github.com/econia-labs/econia/pull/723
+[#725]: https://github.com/econia-labs/econia/pull/725
+[#727]: https://github.com/econia-labs/econia/pull/727
+[#728]: https://github.com/econia-labs/econia/pull/728
+[#729]: https://github.com/econia-labs/econia/pull/729
+[#730]: https://github.com/econia-labs/econia/pull/730
+[#732]: https://github.com/econia-labs/econia/pull/732
+[#736]: https://github.com/econia-labs/econia/pull/736
+[#738]: https://github.com/econia-labs/econia/pull/738
+[#744]: https://github.com/econia-labs/econia/pull/744
+[#746]: https://github.com/econia-labs/econia/pull/746
+[#749]: https://github.com/econia-labs/econia/pull/749
+[#753]: https://github.com/econia-labs/econia/pull/753
+[#760]: https://github.com/econia-labs/econia/pull/760
+[#761]: https://github.com/econia-labs/econia/pull/761
+[#762]: https://github.com/econia-labs/econia/pull/762
+[#764]: https://github.com/econia-labs/econia/pull/764
+[#765]: https://github.com/econia-labs/econia/pull/765
+[#766]: https://github.com/econia-labs/econia/pull/766
+[#767]: https://github.com/econia-labs/econia/pull/767
+[#768]: https://github.com/econia-labs/econia/pull/768
+[#772]: https://github.com/econia-labs/econia/pull/772
+[#775]: https://github.com/econia-labs/econia/pull/775
+[#778]: https://github.com/econia-labs/econia/pull/778
+[#780]: https://github.com/econia-labs/econia/pull/780
+[#783]: https://github.com/econia-labs/econia/pull/783
+[#786]: https://github.com/econia-labs/econia/pull/786
+[#788]: https://github.com/econia-labs/econia/pull/788
+[#792]: https://github.com/econia-labs/econia/pull/792
+[#793]: https://github.com/econia-labs/econia/pull/793
+[#796]: https://github.com/econia-labs/econia/pull/796
+[docs site readme]: https://github.com/econia-labs/econia/blob/main/doc/doc-site/README.md
+[dss-v2.1.0-rc.1]: https://github.com/econia-labs/econia/releases/tag/dss-v2.1.0-rc.1
+[dss-v2.2.1-rc.1]: https://github.com/econia-labs/econia/releases/tag/dss-v2.2.1-rc.1
+[dss-v2.3.0-rc.1]: https://github.com/econia-labs/econia/releases/tag/dss-v2.3.0-rc.1
+[dss-v2.4.0-rc.1]: https://github.com/econia-labs/econia/releases/tag/dss-v2.4.0-rc.1
 [processor #19]: https://github.com/econia-labs/aptos-indexer-processors/pull/19
 [processor #20]: https://github.com/econia-labs/aptos-indexer-processors/pull/20
 [processor #21]: https://github.com/econia-labs/aptos-indexer-processors/pull/21
+[processor #22]: https://github.com/econia-labs/aptos-indexer-processors/pull/22
+[processor #23]: https://github.com/econia-labs/aptos-indexer-processors/pull/23
+[processor #24]: https://github.com/econia-labs/aptos-indexer-processors/pull/24
+[processor #25]: https://github.com/econia-labs/aptos-indexer-processors/pull/25
+[processor #27]: https://github.com/econia-labs/aptos-indexer-processors/pull/27
+[processor #31]: https://github.com/econia-labs/aptos-indexer-processors/pull/31
+[processor submodule]: https://github.com/econia-labs/aptos-indexer-processors/pulls?q=is%3Aclosed
 [v1.3.0]: https://github.com/econia-labs/econia/releases/tag/dss-v1.3.0
 [v1.4.0]: https://github.com/econia-labs/econia/compare/dss-v1.3.0...dss-v1.4.0
 [v1.5.0]: https://github.com/econia-labs/econia/compare/dss-v1.4.0...dss-v1.5.0
+[v1.6.0]: https://github.com/econia-labs/econia/compare/dss-v1.5.0...dss-v1.6.0
+[v1.6.1]: https://github.com/econia-labs/econia/compare/dss-v1.6.0...dss-v1.6.1
+[v2.0.0]: https://github.com/econia-labs/econia/compare/dss-v1.6.1...dss-v2.0.0
+[v2.0.1]: https://github.com/econia-labs/econia/compare/dss-v2.0.0...dss-v2.0.1
+[v2.1.0]: https://github.com/econia-labs/econia/compare/dss-v2.0.1...dss-v2.1.0
+[v2.2.0]: https://github.com/econia-labs/econia/compare/dss-v2.1.0...dss-v2.2.0
+[v2.3.0]: https://github.com/econia-labs/econia/compare/dss-v2.2.0...dss-v2.3.0
+[v2.4.0]: https://github.com/econia-labs/econia/compare/dss-v2.3.0...dss-v2.4.0
 [`dss-stable`]: https://github.com/econia-labs/econia/tree/dss-stable
+[`econia` repo]: https://github.com/econia-labs/econia/pulls?q=is%3Aclosed
+
+

@@ -7,11 +7,16 @@ use std::{
 use aggregator::Pipeline;
 use anyhow::{anyhow, Result};
 use aptos_sdk::rest_client::AptosBaseUrl;
+use bigdecimal::BigDecimal;
 use clap::{Parser, ValueEnum};
-use pipelines::{Candlesticks, Coins, Leaderboards, OrderHistory, RefreshMaterializedView, RollingVolume, UserHistory};
+use pipelines::{
+    Candlesticks, Coins, EnumeratedVolume, Fees, Leaderboards, OrderHistoryPipelines, Prices,
+    RefreshMaterializedView, RollingVolume, UserBalances, UserHistory,
+};
 use sqlx::Executor;
 use sqlx_postgres::PgPoolOptions;
 use tokio::{sync::Mutex, task::JoinSet};
+use tracing::Instrument;
 use url::Url;
 
 mod dbtypes;
@@ -45,10 +50,16 @@ struct Args {
 pub enum Pipelines {
     Candlesticks,
     Coins,
+    EnumeratedVolume,
+    Fees,
     Leaderboards,
     Market24hData,
-    OrderHistory,
+    Prices,
     RollingVolume,
+    OrderHistoryPipelines,
+    TvlPerAsset,
+    TvlPerMarket,
+    UserBalances,
     UserHistory,
 }
 
@@ -161,10 +172,12 @@ async fn main() -> Result<()> {
 
     let env_config: EnvConfig = EnvConfig::new();
 
-    let network = env_config.aptos_network.unwrap_or_else(|| args.aptos_network.unwrap_or_else(|| {
-        tracing::warn!("APTOS_NETWORK is not set. Using AptosNetwork::Testnet by default.");
-        AptosNetwork::Testnet
-    }));
+    let network = env_config.aptos_network.unwrap_or_else(|| {
+        args.aptos_network.unwrap_or_else(|| {
+            tracing::warn!("APTOS_NETWORK is not set. Using AptosNetwork::Testnet by default.");
+            AptosNetwork::Testnet
+        })
+    });
 
     let database_url = env_config.database_url.unwrap_or_else(|| {
         args.database_url.unwrap_or_else(|| {
@@ -173,34 +186,41 @@ async fn main() -> Result<()> {
         })
     });
 
-    let pipelines =
-        if env_config.no_default || args.no_default {
-            let mut include = env_config.include.clone();
-            include.append(&mut args.include);
-            include.sort();
-            include.dedup();
-            if include.is_empty() {
-                    tracing::error!("No pipelines are included and --no-default is set.");
-                    panic!();
-            }
-            include
-        } else {
-            let mut x = vec![
-                Pipelines::Candlesticks,
-                Pipelines::Coins,
-                Pipelines::Market24hData,
-                Pipelines::UserHistory,
-            ];
-            let mut exclude = env_config.exclude.clone();
-            let mut include = env_config.include.clone();
-            exclude.append(&mut args.exclude);
-            include.append(&mut args.include);
-            x = x.into_iter().filter(|a| !exclude.contains(a)).collect();
-            x.append(&mut include);
-            x.sort();
-            x.dedup();
-            x
-        };
+    let pipelines = if env_config.no_default || args.no_default {
+        let mut include = env_config.include.clone();
+        include.append(&mut args.include);
+        include.sort();
+        include.dedup();
+        if include.is_empty() {
+            tracing::error!("No pipelines are included and --no-default is set.");
+            panic!();
+        }
+        include
+    } else {
+        let mut x = vec![
+            Pipelines::Candlesticks,
+            Pipelines::Coins,
+            Pipelines::EnumeratedVolume,
+            Pipelines::Fees,
+            Pipelines::Market24hData,
+            Pipelines::Prices,
+            Pipelines::RollingVolume,
+            Pipelines::UserBalances,
+            Pipelines::UserHistory,
+            Pipelines::OrderHistoryPipelines,
+            Pipelines::TvlPerAsset,
+            Pipelines::TvlPerMarket,
+        ];
+        let mut exclude = env_config.exclude.clone();
+        let mut include = env_config.include.clone();
+        exclude.append(&mut args.exclude);
+        include.append(&mut args.include);
+        x = x.into_iter().filter(|a| !exclude.contains(a)).collect();
+        x.append(&mut include);
+        x.sort();
+        x.dedup();
+        x
+    };
     tracing::info!("Using pipelines {pipelines:?}.");
     tracing::info!("Using network {network:?}.");
 
@@ -260,6 +280,10 @@ async fn main() -> Result<()> {
                     network.to_base_url(),
                 ))));
             }
+            Pipelines::EnumeratedVolume => {
+                data.push(Arc::new(Mutex::new(EnumeratedVolume::new(pool.clone()))))
+            }
+            Pipelines::Fees => data.push(Arc::new(Mutex::new(Fees::new(pool.clone())))),
             Pipelines::Leaderboards => {
                 data.push(Arc::new(Mutex::new(Leaderboards::new(pool.clone()))));
             }
@@ -270,8 +294,32 @@ async fn main() -> Result<()> {
                     Duration::from_secs(5 * 60),
                 ))))
             }
-            Pipelines::OrderHistory => data.push(Arc::new(Mutex::new(OrderHistory::new(pool.clone())))),
-            Pipelines::RollingVolume => data.push(Arc::new(Mutex::new(RollingVolume::new(pool.clone())))),
+            Pipelines::Prices => data.push(Arc::new(Mutex::new(Prices::new(pool.clone())))),
+            Pipelines::RollingVolume => {
+                data.push(Arc::new(Mutex::new(RollingVolume::new(pool.clone()))))
+            }
+            Pipelines::OrderHistoryPipelines => {
+                data.push(Arc::new(Mutex::new(OrderHistoryPipelines::new(
+                    pool.clone(),
+                ))));
+            }
+            Pipelines::TvlPerAsset => {
+                data.push(Arc::new(Mutex::new(RefreshMaterializedView::new(
+                    pool.clone(),
+                    "aggregator.tvl_per_asset",
+                    Duration::from_secs(60),
+                ))));
+            }
+            Pipelines::TvlPerMarket => {
+                data.push(Arc::new(Mutex::new(RefreshMaterializedView::new(
+                    pool.clone(),
+                    "aggregator.tvl_per_market",
+                    Duration::from_secs(60),
+                ))));
+            }
+            Pipelines::UserBalances => {
+                data.push(Arc::new(Mutex::new(UserBalances::new(pool.clone()))));
+            }
             Pipelines::UserHistory => {
                 data.push(Arc::new(Mutex::new(UserHistory::new(pool.clone()))));
             }
@@ -281,24 +329,47 @@ async fn main() -> Result<()> {
     let mut handles = JoinSet::new();
 
     for data in data {
+        let name = {
+            let locked = data.lock().await;
+            locked.model_name()
+        };
+        let span = tracing::info_span!("pipeline", name);
         handles.spawn(async move {
+
+            let span_hist = tracing::info_span!("historical");
+            let data_hist = data.clone();
+            async move {
+                let mut data = data_hist.lock().await;
+                tracing::info!("Starting processing batch.");
+                let start = SystemTime::now();
+                let result = data.process_and_save_historical_data()
+                    .await;
+                let time = start
+                    .elapsed()
+                    .unwrap_or(Duration::from_secs(0))
+                    .as_millis();
+                if let Err(e) = result {
+                    match &e {
+                        aggregator::PipelineError::ProcessingError(e) => {
+                            tracing::error!(elapsed_ms = time, error = %e, backtrace = %e.backtrace(), "Could not process batch.");
+                        },
+                        aggregator::PipelineError::SavingError(e) => {
+                            tracing::error!(elapsed_ms = time, error = %e, backtrace = %e.backtrace(), "Could not process batch.");
+                        }
+                        _ => {
+                            tracing::error!(elapsed_ms = time, error = %e, "Could not process batch.");
+                        }
+                    }
+                    Err(e)?;
+                };
+                tracing::info!(elapsed_ms = time, "Finished processing batch.");
+                anyhow::Result::<()>::Ok(())
+            }.instrument(span_hist).await?;
+
             let mut data = data.lock().await;
 
-            tracing::info!(
-                "[{}] Starting process & saving (historical).",
-                data.model_name()
-            );
-            let start = SystemTime::now();
-            data.process_and_save_historical_data().await?;
-            let time = start
-                .elapsed()
-                .unwrap_or(Duration::from_secs(0))
-                .as_millis();
-            tracing::info!(
-                "[{}] Finished process & saving in {}ms (historical).",
-                data.model_name(),
-                time
-            );
+            let mut retries = 0;
+            let max_retries = 3;
 
             loop {
                 let interval = data.poll_interval().unwrap_or(default_interval);
@@ -306,26 +377,43 @@ async fn main() -> Result<()> {
                 tokio::time::sleep(interval).await;
 
                 if data.ready() {
-                    tracing::info!("[{}] Starting process & saving.", data.model_name());
+                    tracing::info!("Starting processing batch.");
                     let start = SystemTime::now();
-                    data.process_and_save().await?;
+                    let result = data.process_and_save().await;
                     let time = start
                         .elapsed()
                         .unwrap_or(Duration::from_secs(0))
                         .as_millis();
-                    tracing::info!(
-                        "[{}] Finished process & saving in {}ms.",
-                        data.model_name(),
-                        time
-                    );
+                    if let Err(e) = result {
+                        match &e {
+                            aggregator::PipelineError::ProcessingError(e) => {
+                                tracing::error!(elapsed_ms = time, error = %e, backtrace = %e.backtrace(), "Could not process batch.");
+                            },
+                            aggregator::PipelineError::SavingError(e) => {
+                                tracing::error!(elapsed_ms = time, error = %e, backtrace = %e.backtrace(), "Could not process batch.");
+                            }
+                            _ => {
+                                tracing::error!(elapsed_ms = time, error = %e, "Could not process batch.");
+                            }
+                        }
+                        retries += 1;
+                        if retries > max_retries {
+                            Err(e)?;
+                        } else {
+                            tracing::warn!(retries_left = max_retries - retries + 1, "Retrying.");
+                        }
+                    } else {
+                        retries = 0;
+                        tracing::info!(elapsed_ms = time, "Finished processing batch.");
+                    }
                 } else {
-                    tracing::info!("[{}] Data is not ready.", data.model_name());
+                    tracing::warn!("Data is not ready.");
                 }
             }
 
             #[allow(unreachable_code)]
             Ok::<(), anyhow::Error>(())
-        });
+        }.instrument(span));
     }
 
     while let Some(res) = handles.join_next().await {
@@ -333,4 +421,44 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// The maximum number of transactions processed in one batch.
+const MAX_BATCH_SIZE: u64 = 1_000_000;
+/// The minimum number of transactions processed in one batch.
+const MIN_BATCH_SIZE: u64 = 1;
+
+/// The batch size used to initialize pipelines.
+const DEFAULT_BATCH_SIZE: u64 = 1;
+
+// The coefficient by which to multiply when increasing batch size.
+const BATCH_SIZE_INCREASE_COEFFICIENT: u64 = 2;
+// The coefficient by which to divide when reducing batch size.
+const BATCH_SIZE_REDUCE_COEFFICIENT: u64 = 10;
+
+/// The number of events a pipeline should target to load into ram at once.
+const TARGET_EVENTS: usize = 1_000_000;
+// The denominator of the ratio of `TARGET_EVENTS` when to start increasing the batch size.
+const TARGET_EVENTS_RATIO_DENOMINATOR: usize = 10;
+
+/// Update the batch size based on how many events the current batch contained.
+fn update_batch_size(current_batch_size: &mut BigDecimal, n_events: usize) {
+    let min_batch_size = BigDecimal::from(MIN_BATCH_SIZE);
+    let max_batch_size = BigDecimal::from(MAX_BATCH_SIZE);
+
+    if n_events > TARGET_EVENTS && *current_batch_size > min_batch_size {
+        *current_batch_size = (current_batch_size.clone()
+            / BigDecimal::from(BATCH_SIZE_REDUCE_COEFFICIENT))
+        .max(min_batch_size);
+
+        tracing::debug!("Batch size reduced to {}", current_batch_size);
+    } else if n_events < TARGET_EVENTS / TARGET_EVENTS_RATIO_DENOMINATOR
+        && *current_batch_size < max_batch_size
+    {
+        *current_batch_size = (current_batch_size.clone()
+            * BigDecimal::from(BATCH_SIZE_INCREASE_COEFFICIENT))
+        .min(max_batch_size);
+
+        tracing::debug!("Batch size increased to {}", current_batch_size);
+    }
 }

@@ -152,6 +152,7 @@ pub async fn account(
 
     let econia_client = EconiaClient::connect(
         reqwest::Url::parse(&node_url).unwrap(),
+        None,
         econia_address.clone(),
         account,
         None,
@@ -320,7 +321,7 @@ async fn main() -> EconiaResult<()> {
         faucet_address,
         faucet_client,
         econia_address,
-        mut econia_client,
+        econia_client,
     } = init(&args).await;
 
     print_title!("Create a market for eAPT/eUSDC");

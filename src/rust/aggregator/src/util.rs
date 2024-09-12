@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use bigdecimal::BigDecimal;
 use sqlx::{Executor, Pool, Transaction};
 use sqlx_postgres::Postgres;
 
@@ -20,8 +21,6 @@ pub async fn create_repeatable_read_transaction<'a>(
 }
 
 pub async fn commit_transaction<'a>(tx: Transaction<'a, Postgres>) -> PipelineAggregationResult {
-    tx.commit()
-        .await
-        .map_err(to_pipeline_error)?;
+    tx.commit().await.map_err(to_pipeline_error)?;
     Ok(())
 }
